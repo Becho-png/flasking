@@ -1,39 +1,49 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-from pyngrok import ngrok
 from dotenv import load_dotenv
 import os
-load_dotenv()
-# NGROK TOKEN
-ngrok.set_auth_token(os.getenv("NGROK_AUTH_TOKEN"))
 
-# FLASK
+load_dotenv()
+
 app = Flask(__name__)
 CORS(app)
 
-# OPENAI
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# API ENDPOINT
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "status": "Movie Recommendation API is running"
+    })
+
 @app.route("/recommend", methods=["POST"])
 def recommend():
-
-    data = request.json
+    data = request.get_json() or {}
     prompt = data.get("prompt", "")
+
+    if not prompt:
+        return jsonify({
+            "recommendation": "Please enter a movie preference."
+        })
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
+                "role": "system",
+                "content": "You are a movie recommendation assistant. Always recommend movies directly. Do not ask follow-up questions."
+            },
+            {
                 "role": "user",
                 "content": f"""
-The user wants movie recommendations for this genre or mood: {prompt}.
+The user wants movie recommendations for this genre, mood, or preference: {prompt}
 
 Recommend exactly 3 movies.
 Only return movie names.
+Do not include explanations.
 Do not ask questions.
 """
             }
@@ -46,10 +56,5 @@ Do not ask questions.
         "recommendation": result
     })
 
-# NGROK
-public_url = ngrok.connect(5000)
-print("NGROK URL:", public_url)
-
-# RUN
 if __name__ == "__main__":
-    app.run(port=5000)
+    app.run(host="0.0.0.0", port=5000)
