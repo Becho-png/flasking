@@ -9,12 +9,10 @@ app = Flask(__name__)
 CORS(app)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 
 
 def get_movie_data(title, min_rating):
-
     try:
 
         url = "https://api.themoviedb.org/3/search/movie"
@@ -78,7 +76,7 @@ def recommend():
 
     data = request.get_json() or {}
 
-    genre = data.get("genre", "horror")
+    prompt = data.get("prompt", "horror")
     mood = data.get("mood", "")
 
     min_imdb_raw = data.get("min_imdb")
@@ -88,18 +86,19 @@ def recommend():
     else:
         min_imdb = float(min_imdb_raw)
 
-    prompt = f"""
-Recommend up to 5 REAL movies.
+    gpt_prompt = f"""
+Recommend up to 10 REAL movies.
 
-Genre: {genre}
+Genre: {prompt}
 Mood: {mood}
 
-IMPORTANT RULES:
+RULES:
 - Return ONLY valid JSON.
-- Recommend REAL movies only.
+- Movies MUST match the selected genre and mood.
 - Do NOT include ratings.
-- JSON format must be:
+- No explanations.
 
+JSON FORMAT:
 {{
   "movies": [
     {{
@@ -120,10 +119,10 @@ IMPORTANT RULES:
                 },
                 {
                     "role": "user",
-                    "content": prompt
+                    "content": gpt_prompt
                 }
             ],
-            temperature=0.4
+            temperature=0.3
         )
 
         content = response.choices[0].message.content
@@ -143,13 +142,16 @@ IMPORTANT RULES:
             if checked_movie is not None:
                 filtered_movies.append(checked_movie)
 
+            if len(filtered_movies) == 3:
+                break
+
         if len(filtered_movies) == 0:
 
             return jsonify({
                 "movies": [
                     {
                         "title": "No Movie Found",
-                        "overview": f"No movies found with IMDb rating above {min_imdb}",
+                        "overview": f"No movies found with rating above {min_imdb}",
                         "rating": 0,
                         "poster": ""
                     }
