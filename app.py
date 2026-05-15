@@ -1,19 +1,52 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-import os, json
+import os
+import json
+import requests
 
 app = Flask(__name__)
 CORS(app)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+
+
+def get_movie_poster(title):
+    try:
+        url = "https://api.themoviedb.org/3/search/movie"
+
+        params = {
+            "api_key": TMDB_API_KEY,
+            "query": title
+        }
+
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        results = data.get("results", [])
+
+        if len(results) > 0:
+            poster_path = results[0].get("poster_path")
+
+            if poster_path:
+                return f"https://image.tmdb.org/t/p/w500{poster_path}"
+
+        return ""
+
+    except:
+        return ""
+
+
 @app.route("/", methods=["GET"])
 def home():
-    return "Movie API running"
+    return "Movie Recommendation API Running"
+
 
 @app.route("/recommend", methods=["POST"])
 def recommend():
+
     data = request.get_json() or {}
 
     genre = data.get("genre", "horror")
@@ -21,72 +54,81 @@ def recommend():
     min_imdb = float(data.get("min_imdb", 1))
 
     prompt = f"""
-Recommend 3 real movies.
+Recommend up to 3 REAL movies.
 
 Genre: {genre}
 Mood: {mood}
 Minimum IMDb rating: {min_imdb}
 
-IMPORTANT RULES:
+RULES:
 - Return ONLY valid JSON.
-- Every movie rating MUST be >= {min_imdb}.
-- Use real well-known movies.
-- Do not return movies below the minimum rating.
-- If not enough movies exist, return fewer.
-- Poster can be an IMDb or TMDB poster image URL. If unsure, use empty string.
+- Movies MUST be real.
+- Movies MUST have IMDb >= {min_imdb}
+- No fake ratings.
+- Overview must be short.
 
-JSON format:
+JSON FORMAT:
 {{
   "movies": [
     {{
-      "title": "Movie title",
-      "overview": "Short movie description",
-      "rating": 7.5,
-      "poster": ""
+      "title": "Movie Name",
+      "overview": "Short description",
+      "rating": 8.5
     }}
   ]
 }}
 """
 
     try:
+
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You recommend real movies and return only valid JSON."
+                    "content": "You are a movie recommendation assistant that returns only valid JSON."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.2
+            temperature=0.3
         )
 
         content = response.choices[0].message.content
+
         result = json.loads(content)
 
         movies = result.get("movies", [])
 
         filtered_movies = []
-        for movie in movies:
-            rating = float(movie.get("rating", 0))
 
-            if rating >= min_imdb:
-                filtered_movies.append({
-                    "title": movie.get("title", ""),
-                    "overview": movie.get("overview", ""),
-                    "rating": rating,
-                    "poster": movie.get("poster", "")
-                })
+        for movie in movies:
+
+            try:
+                rating = float(movie.get("rating", 0))
+
+                if rating >= min_imdb:
+
+                    title = movie.get("title", "")
+
+                    filtered_movies.append({
+                        "title": title,
+                        "overview": movie.get("overview", ""),
+                        "rating": rating,
+                        "poster": get_movie_poster(title)
+                    })
+
+            except:
+                continue
 
         if len(filtered_movies) == 0:
             return jsonify({
                 "movies": [
                     {
-                        "title": "No movie found",
-                        "overview": f"No {genre} movie found with IMDb rating {min_imdb} or higher.",
+                        "title": "No Movie Found",
+                        "overview": f"No movies found with IMDb rating above {min_imdb}",
                         "rating": 0,
                         "poster": ""
                     }
@@ -98,6 +140,7 @@ JSON format:
         })
 
     except Exception as e:
+
         return jsonify({
             "movies": [
                 {
