@@ -13,8 +13,10 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 
 
-def get_movie_poster(title):
+def get_movie_data(title, min_rating):
+
     try:
+
         url = "https://api.themoviedb.org/3/search/movie"
 
         headers = {
@@ -37,18 +39,33 @@ def get_movie_poster(title):
 
         results = data.get("results", [])
 
-        if len(results) > 0:
+        if len(results) == 0:
+            return None
 
-            poster_path = results[0].get("poster_path")
+        movie = results[0]
 
-            if poster_path:
-                return f"https://image.tmdb.org/t/p/w500{poster_path}"
+        rating = round(float(movie.get("vote_average", 0)), 1)
 
-        return ""
+        if rating < min_rating:
+            return None
+
+        poster_path = movie.get("poster_path")
+
+        poster = ""
+
+        if poster_path:
+            poster = f"https://image.tmdb.org/t/p/w500{poster_path}"
+
+        return {
+            "title": movie.get("title", title),
+            "overview": movie.get("overview", ""),
+            "rating": rating,
+            "poster": poster
+        }
 
     except Exception as e:
         print("TMDB ERROR:", str(e))
-        return ""
+        return None
 
 
 @app.route("/", methods=["GET"])
@@ -72,26 +89,21 @@ def recommend():
         min_imdb = float(min_imdb_raw)
 
     prompt = f"""
-Recommend up to 3 REAL movies.
+Recommend up to 5 REAL movies.
 
 Genre: {genre}
 Mood: {mood}
-Minimum IMDb rating: {min_imdb}
 
-RULES:
+IMPORTANT RULES:
 - Return ONLY valid JSON.
-- Movies MUST be real.
-- Movies MUST have IMDb >= {min_imdb}
-- No fake ratings.
-- Overview must be short.
+- Recommend REAL movies only.
+- Do NOT include ratings.
+- JSON format must be:
 
-JSON FORMAT:
 {{
   "movies": [
     {{
-      "title": "Movie Name",
-      "overview": "Short description",
-      "rating": 8.5
+      "title": "Movie Name"
     }}
   ]
 }}
@@ -111,7 +123,7 @@ JSON FORMAT:
                     "content": prompt
                 }
             ],
-            temperature=0.3
+            temperature=0.4
         )
 
         content = response.choices[0].message.content
@@ -124,23 +136,12 @@ JSON FORMAT:
 
         for movie in movies:
 
-            try:
+            title = movie.get("title", "")
 
-                rating = float(movie.get("rating", 0))
+            checked_movie = get_movie_data(title, min_imdb)
 
-                if rating >= min_imdb:
-
-                    title = movie.get("title", "")
-
-                    filtered_movies.append({
-                        "title": title,
-                        "overview": movie.get("overview", ""),
-                        "rating": rating,
-                        "poster": get_movie_poster(title)
-                    })
-
-            except:
-                continue
+            if checked_movie is not None:
+                filtered_movies.append(checked_movie)
 
         if len(filtered_movies) == 0:
 
