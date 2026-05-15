@@ -12,9 +12,21 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 
 
+def normalize_title(title):
+    return title.strip().lower()
+
+
+def empty_movie(message):
+    return {
+        "title": "No Movie Found",
+        "overview": message,
+        "rating": 0,
+        "poster": ""
+    }
+
+
 def get_movie_data(title, min_rating):
     try:
-
         url = "https://api.themoviedb.org/3/search/movie"
 
         headers = {
@@ -33,8 +45,10 @@ def get_movie_data(title, min_rating):
             timeout=10
         )
 
-        data = response.json()
+        print("TMDB SEARCH TITLE:", title)
+        print("TMDB STATUS:", response.status_code)
 
+        data = response.json()
         results = data.get("results", [])
 
         if len(results) == 0:
@@ -45,12 +59,12 @@ def get_movie_data(title, min_rating):
         rating = round(float(movie.get("vote_average", 0)), 1)
 
         if rating < min_rating:
+            print("SKIPPED LOW RATING:", movie.get("title", title), rating)
             return None
 
         poster_path = movie.get("poster_path")
 
         poster = ""
-
         if poster_path:
             poster = f"https://image.tmdb.org/t/p/w500{poster_path}"
 
@@ -76,6 +90,8 @@ def recommend():
 
     data = request.get_json() or {}
 
+    print("KUIKA BODY:", data)
+
     prompt = data.get("prompt", "horror")
     mood = data.get("mood", "")
 
@@ -96,6 +112,7 @@ RULES:
 - Return ONLY valid JSON.
 - Movies MUST match the selected genre and mood.
 - Do NOT include ratings.
+- Do NOT repeat the same movie.
 - No explanations.
 
 JSON FORMAT:
@@ -109,7 +126,6 @@ JSON FORMAT:
 """
 
     try:
-
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
@@ -127,51 +143,56 @@ JSON FORMAT:
 
         content = response.choices[0].message.content
 
-        result = json.loads(content)
+        print("GPT RAW:", content)
 
+        result = json.loads(content)
         movies = result.get("movies", [])
 
         filtered_movies = []
+        seen_titles = set()
 
         for movie in movies:
-
             title = movie.get("title", "")
+
+            if title == "":
+                continue
 
             checked_movie = get_movie_data(title, min_imdb)
 
-            if checked_movie is not None:
-                filtered_movies.append(checked_movie)
+            if checked_movie is None:
+                continue
+
+            normalized = normalize_title(checked_movie.get("title", title))
+
+            if normalized in seen_titles:
+                print("SKIPPED DUPLICATE:", checked_movie.get("title"))
+                continue
+
+            seen_titles.add(normalized)
+            filtered_movies.append(checked_movie)
 
             if len(filtered_movies) == 3:
                 break
 
-        if len(filtered_movies) == 0:
+        while len(filtered_movies) < 3:
+            filtered_movies.append(
+                empty_movie("Sorry, couldn't find any other movie matching your filters.")
+            )
 
-            return jsonify({
-                "movies": [
-                    {
-                        "title": "No Movie Found",
-                        "overview": f"No movies found with rating above {min_imdb}",
-                        "rating": 0,
-                        "poster": ""
-                    }
-                ]
-            })
+        print("RETURN MOVIES:", filtered_movies)
 
         return jsonify({
             "movies": filtered_movies
         })
 
     except Exception as e:
+        print("MAIN ERROR:", str(e))
 
         return jsonify({
             "movies": [
-                {
-                    "title": "Error",
-                    "overview": str(e),
-                    "rating": 0,
-                    "poster": ""
-                }
+                empty_movie(str(e)),
+                empty_movie("Sorry, couldn't find any other movie matching your filters."),
+                empty_movie("Sorry, couldn't find any other movie matching your filters.")
             ]
         })
 
