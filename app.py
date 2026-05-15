@@ -47,7 +47,7 @@ def get_tmdb_movie(movie_name):
 
         return {
             "title": str(movie_name),
-            "rating": "N/A",
+            "rating": "1",
             "overview": "No overview found.",
             "poster": ""
         }
@@ -63,7 +63,7 @@ def get_tmdb_movie(movie_name):
 
     return {
         "title": str(result.get("title", movie_name)),
-        "rating": str(result.get("vote_average", "N/A")),
+        "rating": str(result.get("vote_average", "1")),
         "overview": str(result.get("overview", "")),
         "poster": str(poster_url)
     }
@@ -76,7 +76,10 @@ def recommend():
 
     prompt = data.get("prompt", "").strip()
 
+    min_imdb = data.get("min_imdb", "1")
+
     print("USER PROMPT:", prompt)
+    print("MIN IMDB:", min_imdb)
 
     if not prompt:
 
@@ -113,7 +116,10 @@ Rules:
                 "content": f"""
 User request: {prompt}
 
+Minimum IMDb rating: {min_imdb}
+
 Recommend exactly 3 movies matching this request.
+Only recommend movies above the minimum IMDb score.
 Return only movie titles separated by commas.
 """
             }
@@ -135,6 +141,12 @@ Return only movie titles separated by commas.
     for movie_name in movie_names[:3]:
 
         movie_data = get_tmdb_movie(movie_name)
+
+        try:
+            if float(movie_data["rating"]) < float(min_imdb):
+                continue
+        except:
+            pass
 
         movies.append(movie_data)
 
