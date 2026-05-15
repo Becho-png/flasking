@@ -76,6 +76,8 @@ def recommend():
 
     prompt = data.get("prompt", "").strip()
 
+    print("USER PROMPT:", prompt)
+
     if not prompt:
 
         return jsonify({
@@ -84,15 +86,13 @@ def recommend():
         })
 
     ai_response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        temperature=0.2,
+        model="gpt-5.4-mini",
+        temperature=0.4,
         messages=[
             {
                 "role": "system",
                 "content": """
 You are a strict movie recommendation assistant.
-
-The user will provide a movie genre, mood, actor, or movie preference.
 
 Rules:
 - Recommend exactly 3 REAL movies.
@@ -101,21 +101,28 @@ Rules:
 - If the user says comedy, recommend ONLY comedy movies.
 - If the user says romance, recommend ONLY romance movies.
 - If the user gives an actor, recommend movies starring that actor.
-- Never return phrases like "please provide a genre".
+- Never return generic top movies unless they match the request.
 - Never ask questions.
+- Never explain.
+- Never repeat unrelated previous answers.
 - Return ONLY movie names separated by commas.
-- No numbering.
-- No explanations.
 """
             },
             {
                 "role": "user",
-                "content": f"User preference: {prompt}"
+                "content": f"""
+User request: {prompt}
+
+Recommend exactly 3 movies matching this request.
+Return only movie titles separated by commas.
+"""
             }
         ]
     )
 
     movie_text = ai_response.choices[0].message.content
+
+    print("AI RESPONSE:", movie_text)
 
     movie_names = [
         m.strip()
