@@ -10,21 +10,28 @@ CORS(app)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-TMDB_API_KEY = os.getenv("TMDB_TOKEN")
+TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 
 
 def get_movie_poster(title):
     try:
         url = "https://api.themoviedb.org/3/search/movie"
 
+        headers = {
+            "Authorization": f"Bearer {TMDB_TOKEN}",
+            "accept": "application/json"
+        }
+
         params = {
-            "api_key": TMDB_API_KEY,
             "query": title
         }
 
-        response = requests.get(url, params=params)
-        data = response.json()
+        response = requests.get(url, headers=headers, params=params, timeout=10)
 
+        print("TMDB STATUS:", response.status_code)
+        print("TMDB TEXT:", response.text[:300])
+
+        data = response.json()
         results = data.get("results", [])
 
         if len(results) > 0:
@@ -35,9 +42,9 @@ def get_movie_poster(title):
 
         return ""
 
-    except:
+    except Exception as e:
+        print("TMDB ERROR:", str(e))
         return ""
-
 
 @app.route("/", methods=["GET"])
 def home():
