@@ -26,15 +26,19 @@ def get_movie_poster(title):
             "query": title
         }
 
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-
-        print("TMDB STATUS:", response.status_code)
-        print("TMDB TEXT:", response.text[:300])
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=10
+        )
 
         data = response.json()
+
         results = data.get("results", [])
 
         if len(results) > 0:
+
             poster_path = results[0].get("poster_path")
 
             if poster_path:
@@ -45,6 +49,7 @@ def get_movie_poster(title):
     except Exception as e:
         print("TMDB ERROR:", str(e))
         return ""
+
 
 @app.route("/", methods=["GET"])
 def home():
@@ -58,7 +63,13 @@ def recommend():
 
     genre = data.get("genre", "horror")
     mood = data.get("mood", "")
-    min_imdb = float(data.get("min_imdb", 1))
+
+    min_imdb_raw = data.get("min_imdb")
+
+    if min_imdb_raw is None or min_imdb_raw == "":
+        min_imdb = 1
+    else:
+        min_imdb = float(min_imdb_raw)
 
     prompt = f"""
 Recommend up to 3 REAL movies.
@@ -114,6 +125,7 @@ JSON FORMAT:
         for movie in movies:
 
             try:
+
                 rating = float(movie.get("rating", 0))
 
                 if rating >= min_imdb:
@@ -131,6 +143,7 @@ JSON FORMAT:
                 continue
 
         if len(filtered_movies) == 0:
+
             return jsonify({
                 "movies": [
                     {
