@@ -4,3 +4,4 @@ openai
 gunicorn
 python-dotenv
 requests
+json
