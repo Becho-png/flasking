@@ -223,7 +223,99 @@ def more_movies():
     return jsonify({
         "movies": next_movies
     })
+GENRE_MAP = {
+    "action": 28,
+    "adventure": 12,
+    "animation": 16,
+    "comedy": 35,
+    "crime": 80,
+    "documentary": 99,
+    "drama": 18,
+    "family": 10751,
+    "fantasy": 14,
+    "history": 36,
+    "horror": 27,
+    "music": 10402,
+    "mystery": 9648,
+    "romance": 10749,
+    "science fiction": 878,
+    "sci-fi": 878,
+    "thriller": 53,
+    "war": 10752,
+    "western": 37
+}
 
+@app.route("/now-playing", methods=["POST"])
+def now_playing():
+    data = request.get_json() or {}
+
+    genre = data.get("genre", "").strip().lower()
+    min_imdb_raw = data.get("min_imdb")
+
+    if min_imdb_raw is None or min_imdb_raw == "":
+        min_imdb = 1
+    else:
+        min_imdb = float(min_imdb_raw)
+
+    genre_id = GENRE_MAP.get(genre)
+
+    url = "https://api.themoviedb.org/3/movie/now_playing"
+    headers = {
+        "Authorization": f"Bearer {TMDB_TOKEN}",
+        "accept": "application/json"
+    }
+
+    params = {
+        "language": "en-US",
+        "page": 1,
+        "region": "TR"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        data = response.json()
+
+        results = data.get("results", [])
+        movies = []
+
+        for movie in results:
+            rating = round(float(movie.get("vote_average", 0)), 1)
+            genre_ids = movie.get("genre_ids", [])
+
+            if genre_id is not None and genre_id not in genre_ids:
+                continue
+
+            if rating < min_imdb:
+                continue
+
+            poster_path = movie.get("poster_path")
+            poster = ""
+            if poster_path:
+                poster = f"https://image.tmdb.org/t/p/w500{poster_path}"
+
+            movies.append({
+                "title": movie.get("title", "Unknown Movie"),
+                "overview": movie.get("overview", ""),
+                "rating": rating,
+                "poster": poster,
+                "release_date": movie.get("release_date", "")
+            })
+
+        while len(movies) < 2:
+            movies.append(empty_movie("No now-playing movie found for this genre."))
+
+        return jsonify({
+            "movies": movies[:6]
+        })
+
+    except Exception as e:
+        print("NOW PLAYING ERROR:", str(e))
+        return jsonify({
+            "movies": [
+                empty_movie(str(e)),
+                empty_movie("Could not fetch now-playing movies.")
+            ]
+        })
 
 if __name__ == "__main__":
     app.run(debug=True)
