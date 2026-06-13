@@ -316,14 +316,16 @@ def now_playing():
                 empty_movie("Could not fetch now-playing movies.")
             ]
         })
+        
 @app.route("/different", methods=["POST"])
 def different_movies():
+    global LAST_MOVIES
+
     data = request.get_json() or {}
 
     print("SHOW DIFFERENT BODY:", data)
 
     prompt = data.get("prompt", "horror")
-    mood = data.get("mood", "")
 
     min_imdb_raw = data.get("min_imdb")
 
@@ -332,20 +334,25 @@ def different_movies():
     else:
         min_imdb = float(min_imdb_raw)
 
-    existing_titles = data.get("existing_titles", [])
+    existing_titles = [
+        movie.get("title", "")
+        for movie in LAST_MOVIES
+        if movie.get("title", "") != ""
+    ]
+
+    print("EXISTING TITLES:", existing_titles)
 
     gpt_prompt = f"""
-Recommend 2 DIFFERENT REAL movies.
+Recommend up to 10 DIFFERENT REAL movies.
 
 Genre: {prompt}
-Mood: {mood}
 
 Do NOT recommend these movies:
 {existing_titles}
 
 RULES:
 - Return ONLY valid JSON.
-- Movies MUST match the selected genre and mood.
+- Movies MUST match the selected genre.
 - Do NOT include ratings.
 - Do NOT repeat the same movie.
 - No explanations.
@@ -373,10 +380,11 @@ JSON FORMAT:
                     "content": gpt_prompt
                 }
             ],
-            temperature=0.9
+            temperature=1.0
         )
 
         content = response.choices[0].message.content
+
         print("DIFFERENT GPT RAW:", content)
 
         result = json.loads(content)
@@ -401,18 +409,26 @@ JSON FORMAT:
             if normalized in seen_titles:
                 continue
 
+            if normalized in [normalize_title(t) for t in existing_titles]:
+                print("SKIPPED OLD MOVIE:", checked_movie.get("title"))
+                continue
+
             seen_titles.add(normalized)
             filtered_movies.append(checked_movie)
 
-        while len(filtered_movies) < 2:
-            filtered_movies.append(
+        LAST_MOVIES.extend(filtered_movies)
+
+        different_batch = filtered_movies[:2]
+
+        while len(different_batch) < 2:
+            different_batch.append(
                 empty_movie("Sorry, couldn't find a different movie matching your filters.")
             )
 
-        print("RETURN DIFFERENT:", filtered_movies[:2])
+        print("RETURN DIFFERENT:", different_batch)
 
         return jsonify({
-            "movies": filtered_movies[:2]
+            "movies": different_batch
         })
 
     except Exception as e:
