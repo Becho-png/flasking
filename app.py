@@ -316,6 +316,114 @@ def now_playing():
                 empty_movie("Could not fetch now-playing movies.")
             ]
         })
+@app.route("/different", methods=["POST"])
+def different_movies():
+    data = request.get_json() or {}
 
+    print("SHOW DIFFERENT BODY:", data)
+
+    prompt = data.get("prompt", "horror")
+    mood = data.get("mood", "")
+
+    min_imdb_raw = data.get("min_imdb")
+
+    if min_imdb_raw is None or min_imdb_raw == "":
+        min_imdb = 1
+    else:
+        min_imdb = float(min_imdb_raw)
+
+    existing_titles = data.get("existing_titles", [])
+
+    gpt_prompt = f"""
+Recommend 2 DIFFERENT REAL movies.
+
+Genre: {prompt}
+Mood: {mood}
+
+Do NOT recommend these movies:
+{existing_titles}
+
+RULES:
+- Return ONLY valid JSON.
+- Movies MUST match the selected genre and mood.
+- Do NOT include ratings.
+- Do NOT repeat the same movie.
+- No explanations.
+
+JSON FORMAT:
+{{
+  "movies": [
+    {{
+      "title": "Movie Name"
+    }}
+  ]
+}}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a movie recommendation assistant that returns only valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": gpt_prompt
+                }
+            ],
+            temperature=0.9
+        )
+
+        content = response.choices[0].message.content
+        print("DIFFERENT GPT RAW:", content)
+
+        result = json.loads(content)
+        movies = result.get("movies", [])
+
+        filtered_movies = []
+        seen_titles = set()
+
+        for movie in movies:
+            title = movie.get("title", "")
+
+            if title == "":
+                continue
+
+            checked_movie = get_movie_data(title, min_imdb)
+
+            if checked_movie is None:
+                continue
+
+            normalized = normalize_title(checked_movie.get("title", title))
+
+            if normalized in seen_titles:
+                continue
+
+            seen_titles.add(normalized)
+            filtered_movies.append(checked_movie)
+
+        while len(filtered_movies) < 2:
+            filtered_movies.append(
+                empty_movie("Sorry, couldn't find a different movie matching your filters.")
+            )
+
+        print("RETURN DIFFERENT:", filtered_movies[:2])
+
+        return jsonify({
+            "movies": filtered_movies[:2]
+        })
+
+    except Exception as e:
+        print("DIFFERENT ERROR:", str(e))
+
+        return jsonify({
+            "movies": [
+                empty_movie(str(e)),
+                empty_movie("Sorry, couldn't find a different movie matching your filters.")
+            ]
+        })
+        
 if __name__ == "__main__":
     app.run(debug=True)
